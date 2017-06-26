@@ -1,95 +1,101 @@
-// import {Observable, Observer} from "rxjs"; //IMPORTA TOOOODO
-import {Observable} from 'rxjs/Observable';
-import {Observer} from 'rxjs/Observer';
-import 'rxjs/add/observable/from';
-import "rxjs/add/operator/map"
-import "rxjs/add/operator/filter"
+import {Observable} from 'rxjs'; //IMPORTA TOOOODO
 
-let numbers = [1,2,3,4,5,6];
+// Crear Observable desde un evento
+let circle = document.getElementById('circle');
+let output = document.getElementById('output');
+let button = document.getElementById('button');
+let buttonFetch = document.getElementById('buttonFetch');
 
-let source = Observable.from(numbers);
+let source = Observable.fromEvent(document, 'mousemove')
+    .map((e: MouseEvent) => { //Filtrar los eventos
+        return {
+            x: e.clientX,
+            y: e.clientY
+        }
+    })
+    .filter(value => value.x < 500)
+    .delay(100); //Lo aplica despues del map
 
-/** Modo Clase **/
-class MyObserver implements Observer<number>{
-    next(value){
-        console.info(value);
-    }
+let btnSource = Observable.fromEvent(button, 'click');
+let btnFetchSource = Observable.fromEvent(buttonFetch, 'click');
 
-    error(e){
-        console.error('error' + e);
-    }
 
-    complete(){
-        console.log('complete');
+function onNext(val) {
+    //console.log(val);
+    circle.style.left = val.x + 'px';
+    circle.style.top = val.y + 'px';
+}
+
+function load(url: string) {
+    return Observable.create(observer => {
+        let xhr = new XMLHttpRequest();
+
+        xhr.addEventListener('load', () => {
+            if (xhr.status === 200) {
+                let data = JSON.parse(xhr.responseText);
+                observer.next(data);
+                observer.complete();
+            } else {
+                observer.error(xhr.statusText);
+            }
+        });
+
+        xhr.open('GET', `http://jsonplaceholder.typicode.com/${url}`);
+        xhr.send();
+    }).retryWhen(retryStartegy({intentos: 3, delay: 1000})) //esto es el error
+}
+
+function loadWithFetch(url: string) {
+    //funciona hasta que exista un subscribe
+    return Observable.defer(() => {
+        return Observable.fromPromise(fetch(`http://jsonplaceholder.typicode.com/${url}`).then(result => result.json()));
+    });
+    // funciona sin subscribe por ser un fetch
+    //return Observable.fromPromise(fetch(`http://jsonplaceholder.typicode.com/${url}`).then(result => result.json()));
+}
+
+function retryStartegy({intentos = 4, delay = 1500}) {
+    return function (errors) {
+        return errors
+            .scan((counter, val) => {
+                console.warn(errors);
+                console.log(counter, val);
+                return counter + 1;
+            }, 0)
+            .takeWhile(counter => counter < intentos)
+            .delay(delay);
     }
 }
 
-//source.subscribe(new MyObserver());
+function renderPosts(posts) {
+    posts.forEach(post => {
+        let div = document.createElement('div');
+        div.innerText = post.title;
+        output.appendChild(div);
+    })
+}
+
+
 /** Modo Compacto **/
 source.subscribe(
-    value => console.log(value),
+    onNext,
     e => console.error('error' + e),
     () => console.log('complete')
 );
 
 
-/** asdasd */
+btnSource
+    .flatMap(e => load('postss'))
+    .subscribe(
+        renderPosts,
+        e => console.error('error' + e),
+        () => console.log('complete')
+    );
 
-let source2 = Observable.create(observer => {
-    for(let n of numbers){
-        /** obverser.error es como tirar una exepción **/
-        // if(n %2 === 0) {
-        //     observer.error('Fallo algo');
-        // }
-        observer.next(n);
-    }
-    observer.complete();
-});
-
-source2.subscribe(
-    value => console.log(value),
-    e => console.error('error' + e),
-    () => console.log('complete')
-);
-
-/** Con DELAY **/
-console.log('Observables con Delay');
-
-let source3 = Observable.create(observer => {
-    let index = 0;
-    let productValue = () => {
-        observer.next(numbers[index++]);
-
-        if(index < numbers.length){
-            setTimeout(productValue, 2000)
-        } else {
-            observer.complete();
-        }
-    };
-    productValue();
-});
-
-source3.subscribe(
-    value => console.log(value),
-    e => console.error('error' + e),
-    () => console.log('complete')
-);
-
-
-/** Observables con Operador MAP **/
-console.log('Observables con Operador MAP');
-
-let source4 = Observable.create(observer => {
-    for(let n of numbers){
-        /** obverser.error es como tirar una exepción **/
-        observer.next(n);
-    }
-    observer.complete();
-}).map(n => n * 5)
-    .filter(n => n % 2 > 0);
-
-source4.subscribe(
-    value => console.log(value),
-    e => console.error('error' + e),
-    () => console.log('complete')
-);
+btnFetchSource
+    .flatMap(e => loadWithFetch('posts'))
+    .subscribe(
+        renderPosts,
+        e => console.error('error' + e),
+        () => console.log('complete')
+    );
