@@ -1,60 +1,42 @@
-import {Observable} from 'rxjs'; //IMPORTA TOOOODO
+import {Observable} from "rxjs";
 
-// Crear Observable desde un evento
-let circle = document.getElementById('circle');
 let output = document.getElementById('output');
-let button = document.getElementById('button');
-let buttonFetch = document.getElementById('buttonFetch');
 
-let source = Observable.fromEvent(document, 'mousemove')
-    .map((e: MouseEvent) => { //Filtrar los eventos
-        return {
-            x: e.clientX,
-            y: e.clientY
-        }
-    })
-    .filter(value => value.x < 500)
-    .delay(100); //Lo aplica despues del map
+/** ERROR HANDLING **/
 
-let btnSource = Observable.fromEvent(button, 'click');
-let btnFetchSource = Observable.fromEvent(buttonFetch, 'click');
+let source = Observable.merge(
+    Observable.of(1),
+    Observable.from([2,3,4]),
+    Observable.throw(new Error('Murio x_X!')),
+    Observable.of(5)
+).catch(e => {
+    console.log(`Error Maton ${e}`);
+    return Observable.of(10);
+});
 
-
-function onNext(val) {
-    //console.log(val);
-    circle.style.left = val.x + 'px';
-    circle.style.top = val.y + 'px';
-}
-
-function load(url: string) {
-    return Observable.create(observer => {
-        let xhr = new XMLHttpRequest();
-
-        xhr.addEventListener('load', () => {
-            if (xhr.status === 200) {
-                let data = JSON.parse(xhr.responseText);
-                observer.next(data);
-                observer.complete();
-            } else {
-                observer.error(xhr.statusText);
-            }
-        });
-
-        xhr.open('GET', `http://jsonplaceholder.typicode.com/${url}`);
-        xhr.send();
-    }).retryWhen(retryStartegy({intentos: 3, delay: 1000})) //esto es el error
-}
+source.subscribe(
+    value => console.log(`value: ${value}`),
+    error => console.error(`error: ${error}`),
+    () => console.log('complete')
+);
 
 function loadWithFetch(url: string) {
     //funciona hasta que exista un subscribe
     return Observable.defer(() => {
-        return Observable.fromPromise(fetch(`http://jsonplaceholder.typicode.com/${url}`).then(result => result.json()));
-    });
+        return Observable.fromPromise(fetch(`http://jsonplaceholder.typicode.com/${url}`)
+            .then(result => {
+                if(result.status === 200){
+                    return result.json()
+                } else {
+                    return Promise.reject(result);
+                }
+            }));
+    }).retryWhen(retryStrat({intentos: 3, delay: 2000}));
     // funciona sin subscribe por ser un fetch
     //return Observable.fromPromise(fetch(`http://jsonplaceholder.typicode.com/${url}`).then(result => result.json()));
 }
 
-function retryStartegy({intentos = 4, delay = 1500}) {
+function retryStrat({intentos = 4, delay = 1500}) {
     return function (errors) {
         return errors
             .scan((counter, val) => {
@@ -76,26 +58,8 @@ function renderPosts(posts) {
 }
 
 
-/** Modo Compacto **/
-source.subscribe(
-    onNext,
-    e => console.error('error' + e),
-    () => console.log('complete')
+loadWithFetch('postsx').subscribe(
+    renderPosts,
+    e => console.error("ERRORSAZO", e),
+    () => console.log("COOOOOMMM PLETE")
 );
-
-
-btnSource
-    .flatMap(e => load('postss'))
-    .subscribe(
-        renderPosts,
-        e => console.error('error' + e),
-        () => console.log('complete')
-    );
-
-btnFetchSource
-    .flatMap(e => loadWithFetch('posts'))
-    .subscribe(
-        renderPosts,
-        e => console.error('error' + e),
-        () => console.log('complete')
-    );
