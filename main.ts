@@ -6,7 +6,7 @@ let output = document.getElementById('output');
 
 let source = Observable.merge(
     Observable.of(1),
-    Observable.from([2,3,4]),
+    Observable.from([2, 3, 4]),
     Observable.throw(new Error('Murio x_X!')),
     Observable.of(5)
 ).catch(e => {
@@ -25,7 +25,7 @@ function loadWithFetch(url: string) {
     return Observable.defer(() => {
         return Observable.fromPromise(fetch(`http://jsonplaceholder.typicode.com/${url}`)
             .then(result => {
-                if(result.status === 200){
+                if (result.status === 200) {
                     return result.json()
                 } else {
                     return Promise.reject(result);
@@ -40,11 +40,20 @@ function retryStrat({intentos = 4, delay = 1500}) {
     return function (errors) {
         return errors
             .scan((counter, val) => {
-                console.warn(errors);
-                console.log(counter, val);
-                return counter + 1;
+                /** Para este activar el TakeWhile **/
+                // console.warn(errors);
+                // console.log(counter, val);
+                // return counter + 1;
+
+                /** alternative sin el TakeWhile **/
+                counter += 1;
+                if (counter < intentos) {
+                    return counter;
+                } else {
+                    throw new Error(val);
+                }
             }, 0)
-            .takeWhile(counter => counter < intentos)
+            // .takeWhile(counter => counter < intentos)
             .delay(delay);
     }
 }
@@ -63,3 +72,41 @@ loadWithFetch('postsx').subscribe(
     e => console.error("ERRORSAZO", e),
     () => console.log("COOOOOMMM PLETE")
 );
+
+
+/** UNSUBSCRIBE **/
+function load(url: string) {
+    return Observable.create(observer => {
+        let xhr = new XMLHttpRequest();
+
+        let onLoad = () =>  {
+            if (xhr.status === 200) {
+                let data = JSON.parse(xhr.responseText);
+                observer.next(data);
+                observer.complete();
+            } else {
+                observer.error(xhr.statusText);
+            }
+        };
+
+        xhr.addEventListener('load', onLoad);
+
+        xhr.open('GET', `http://jsonplaceholder.typicode.com/${url}`);
+        xhr.send();
+
+        // Unsubcribe Logic
+        return () => {
+            xhr.removeEventListener('load', onLoad);
+            xhr.abort();
+        }
+    }).retryWhen(retryStrat({intentos: 3, delay: 1000})) //esto es el error
+}
+
+
+
+let subscription = load('postsx')
+    .subscribe(renderPosts,
+            e => console.log(`error: ${e}`),
+        () => console.log('complete'));
+
+subscription.unsubscribe();
